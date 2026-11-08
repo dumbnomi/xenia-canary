@@ -22,7 +22,7 @@ Sessions are matched through [Xenia Web Services](https://github.com/AdrianCassa
 * **Friends & profiles** - Friends lists, gamerpics and Discord rich presence.
 * **XStorage** - Title storage content served from the backend, with a local fallback.
 * **Update checker** - Notifies you when a new netplay build is available.
-* **Windows & Linux** builds.
+* **Windows & Linux** builds..
 
 ## Builds
 
