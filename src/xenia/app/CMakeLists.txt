@@ -53,6 +53,7 @@ target_compile_definitions(xenia-app PRIVATE
 # Core libraries (all platforms)
 target_link_libraries(xenia-app PRIVATE
   xenia-apu
+  $<$<BOOL:${WIN32}>:xenia-debug-xbdm>
   xenia-apu-nop
   xenia-base
   xenia-core

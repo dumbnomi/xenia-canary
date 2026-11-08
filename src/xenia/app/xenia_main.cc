@@ -25,6 +25,9 @@
 
 #include "xenia/app/discord/discord_presence.h"
 #include "xenia/app/emulator_window.h"
+#ifdef XE_PLATFORM_WIN32
+#include "xenia/debug/xbdm/xbdm_server.h"
+#endif
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
@@ -141,6 +144,9 @@ DEFINE_transient_bool(portable, true,
 #endif
 
 DECLARE_bool(debug);
+#ifdef XE_PLATFORM_WIN32
+DECLARE_bool(xbdm_enable);
+#endif
 
 DECLARE_bool(discord);
 
@@ -300,6 +306,9 @@ class EmulatorApp final : public xe::ui::WindowedApp {
   DebugWindowClosedListener debug_window_closed_listener_;
 
   std::unique_ptr<Emulator> emulator_;
+#ifdef XE_PLATFORM_WIN32
+  std::unique_ptr<xe::debug::xbdm::XbdmServer> xbdm_server_;
+#endif
   std::unique_ptr<EmulatorWindow> emulator_window_;
 
   // Created on demand, used by the emulator.
@@ -586,6 +595,9 @@ bool EmulatorApp::OnInitialize() {
 }
 
 void EmulatorApp::OnDestroy() {
+#ifdef XE_PLATFORM_WIN32
+  xbdm_server_.reset();
+#endif
   ShutdownEmulatorThreadFromUIThread();
 
   if (cvars::discord) {
@@ -639,6 +651,14 @@ void EmulatorApp::EmulatorThread() {
     app_context().RequestDeferredQuit();
     return;
   }
+
+#ifdef XE_PLATFORM_WIN32
+  if (cvars::xbdm_enable) {
+    xbdm_server_ =
+        std::make_unique<xe::debug::xbdm::XbdmServer>(emulator_.get());
+    xbdm_server_->Start();
+  }
+#endif
 
   app_context().CallInUIThread(
       [this]() { emulator_window_->SetupGraphicsSystemPresenterPainting(); });
