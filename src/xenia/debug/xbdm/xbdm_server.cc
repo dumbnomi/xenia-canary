@@ -8,9 +8,9 @@
 
 #include "xenia/debug/xbdm/xbdm_server.h"
 
+#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <windows.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -19,11 +19,10 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/cpu/processor.h"
-#include "xenia/cpu/xex_module.h"
 #include "xenia/cpu/thread_debug_info.h"
+#include "xenia/cpu/xex_module.h"
 #include "xenia/emulator.h"
 #include "xenia/memory.h"
-
 
 DEFINE_bool(xbdm_enable, false,
             "Run an XBDM (Xbox debug monitor) server on port 730.", "XBDM");
@@ -45,16 +44,22 @@ static SOCKET S(uintptr_t s) { return static_cast<SOCKET>(s); }
 
 bool XbdmServer::Command::GetU32(const std::string& k, uint32_t* out) const {
   auto it = args.find(k);
-  if (it == args.end() || it->second.empty()) return false;
+  if (it == args.end() || it->second.empty()) {
+    return false;
+  }
   char* end = nullptr;
   unsigned long long v = std::strtoull(it->second.c_str(), &end, 0);
-  if (!end || *end != '\0') return false;
+  if (!end || *end != '\0') {
+    return false;
+  }
   *out = static_cast<uint32_t>(v);
   return true;
 }
 
 bool XbdmServer::Start() {
-  if (running_) return true;
+  if (running_) {
+    return true;
+  }
   WSADATA wsa;
   if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
     XELOGE("XBDM: WSAStartup failed");
@@ -78,7 +83,9 @@ bool XbdmServer::Start() {
       bind(t, reinterpret_cast<sockaddr*>(&sa), sizeof(sa)) != 0 ||
       listen(t, 4) != 0) {
     XELOGE("XBDM: failed to listen on {}:{}", cvars::xbdm_bind, kXbdmPort);
-    if (t != INVALID_SOCKET) closesocket(t);
+    if (t != INVALID_SOCKET) {
+      closesocket(t);
+    }
     return false;
   }
   tcp_listen_ = static_cast<uintptr_t>(t);
@@ -91,7 +98,9 @@ bool XbdmServer::Start() {
     udp_sock_ = static_cast<uintptr_t>(u);
   } else {
     XELOGW("XBDM: UDP discovery unavailable");
-    if (u != INVALID_SOCKET) closesocket(u);
+    if (u != INVALID_SOCKET) {
+      closesocket(u);
+    }
   }
 
   running_ = true;
@@ -104,18 +113,30 @@ bool XbdmServer::Start() {
 }
 
 void XbdmServer::Stop() {
-  if (!running_.exchange(false)) return;
-  if (tcp_listen_ != kInvalid) closesocket(S(tcp_listen_));
-  if (udp_sock_ != kInvalid) closesocket(S(udp_sock_));
-  if (tcp_thread_.joinable()) tcp_thread_.join();
-  if (udp_thread_.joinable()) udp_thread_.join();
+  if (!running_.exchange(false)) {
+    return;
+  }
+  if (tcp_listen_ != kInvalid) {
+    closesocket(S(tcp_listen_));
+  }
+  if (udp_sock_ != kInvalid) {
+    closesocket(S(udp_sock_));
+  }
+  if (tcp_thread_.joinable()) {
+    tcp_thread_.join();
+  }
+  if (udp_thread_.joinable()) {
+    udp_thread_.join();
+  }
   tcp_listen_ = udp_sock_ = kInvalid;
 }
 
 void XbdmServer::TcpAcceptLoop() {
   while (running_) {
     SOCKET c = accept(S(tcp_listen_), nullptr, nullptr);
-    if (c == INVALID_SOCKET) break;
+    if (c == INVALID_SOCKET) {
+      break;
+    }
     // Detached: client threads exit when their socket closes.
     std::thread([this, c] { ClientLoop(static_cast<uintptr_t>(c)); }).detach();
   }
@@ -131,14 +152,20 @@ void XbdmServer::UdpDiscoveryLoop() {
     int n = recvfrom(S(udp_sock_), reinterpret_cast<char*>(buf), sizeof(buf), 0,
                      reinterpret_cast<sockaddr*>(&from), &fl);
     if (n < 2) {
-      if (n < 0) break;
+      if (n < 0) {
+        break;
+      }
       continue;
     }
     const std::string& name = cvars::xbdm_name;
     std::string req(reinterpret_cast<char*>(buf) + 2,
                     std::min<size_t>(buf[1], static_cast<size_t>(n) - 2));
-    if (buf[0] != 3) continue;
-    if (!req.empty() && req != name) continue;  // empty = wildcard
+    if (buf[0] != 3) {
+      continue;
+    }
+    if (!req.empty() && req != name) {
+      continue;  // empty = wildcard
+    }
     std::string reply;
     reply.push_back(2);
     reply.push_back(static_cast<char>(name.size()));
@@ -155,13 +182,17 @@ void XbdmServer::ClientLoop(uintptr_t sock) {
   bool open = true;
   while (open && running_) {
     int n = recv(S(sock), chunk, sizeof(chunk), 0);
-    if (n <= 0) break;
+    if (n <= 0) {
+      break;
+    }
     pending.append(chunk, static_cast<size_t>(n));
     size_t pos;
     while (open && (pos = pending.find("\r\n")) != std::string::npos) {
       std::string line = pending.substr(0, pos);
       pending.erase(0, pos + 2);
-      if (line.empty()) continue;
+      if (line.empty()) {
+        continue;
+      }
       Command cmd;
       if (!ParseLine(line, &cmd)) {
         open = SendLine(sock, "400- malformed command");
@@ -169,7 +200,9 @@ void XbdmServer::ClientLoop(uintptr_t sock) {
       }
       open = Dispatch(sock, cmd);
     }
-    if (pending.size() > 64 * 1024) break;  // runaway line
+    if (pending.size() > 64 * 1024) {
+      break;  // runaway line
+    }
   }
   closesocket(S(sock));
 }
@@ -177,30 +210,46 @@ void XbdmServer::ClientLoop(uintptr_t sock) {
 bool XbdmServer::ParseLine(const std::string& line, Command* out) {
   size_t i = 0, n = line.size();
   auto skip_ws = [&] {
-    while (i < n && line[i] == ' ') ++i;
+    while (i < n && line[i] == ' ') {
+      ++i;
+    }
   };
   skip_ws();
   size_t s = i;
-  while (i < n && line[i] != ' ') ++i;
-  if (i == s) return false;
+  while (i < n && line[i] != ' ') {
+    ++i;
+  }
+  if (i == s) {
+    return false;
+  }
   out->name = line.substr(s, i - s);
   std::transform(out->name.begin(), out->name.end(), out->name.begin(),
                  [](unsigned char c) { return char(std::tolower(c)); });
   while (true) {
     skip_ws();
-    if (i >= n) break;
+    if (i >= n) {
+      break;
+    }
     size_t ks = i;
-    while (i < n && line[i] != ' ' && line[i] != '=') ++i;
+    while (i < n && line[i] != ' ' && line[i] != '=') {
+      ++i;
+    }
     std::string key = line.substr(ks, i - ks);
     std::string val;
     if (i < n && line[i] == '=') {
       ++i;
       if (i < n && line[i] == '"') {
         ++i;
-        while (i < n && line[i] != '"') val.push_back(line[i++]);
-        if (i < n) ++i;
+        while (i < n && line[i] != '"') {
+          val.push_back(line[i++]);
+        }
+        if (i < n) {
+          ++i;
+        }
       } else {
-        while (i < n && line[i] != ' ') val.push_back(line[i++]);
+        while (i < n && line[i] != ' ') {
+          val.push_back(line[i++]);
+        }
       }
     }
     out->args[key] = val;  // bare flags get an empty value
@@ -212,7 +261,9 @@ bool XbdmServer::SendRaw(uintptr_t sock, const std::string& s) {
   size_t off = 0;
   while (off < s.size()) {
     int n = send(S(sock), s.data() + off, static_cast<int>(s.size() - off), 0);
-    if (n <= 0) return false;
+    if (n <= 0) {
+      return false;
+    }
     off += static_cast<size_t>(n);
   }
   return true;
@@ -229,11 +280,17 @@ bool XbdmServer::Dispatch(uintptr_t sock, const Command& c) {
     SendLine(sock, "200- bye");
     return false;
   }
-  if (n == "dmversion") return SendLine(sock, "200- 2.0.7645.2");
-  if (n == "consoletype") return SendLine(sock, "200- devkit");
-  if (n == "consolefeatures") return SendLine(sock, "200- ");
-  if (n == "debugger" || n == "debugname" || n == "notifyat" ||
-      n == "reboot" || n == "setsystime") {
+  if (n == "dmversion") {
+    return SendLine(sock, "200- 2.0.7645.2");
+  }
+  if (n == "consoletype") {
+    return SendLine(sock, "200- devkit");
+  }
+  if (n == "consolefeatures") {
+    return SendLine(sock, "200- ");
+  }
+  if (n == "debugger" || n == "debugname" || n == "notifyat" || n == "reboot" ||
+      n == "setsystime") {
     // Accepted so clients proceed; real behavior is a later phase.
     return SendLine(sock, "200- OK");
   }
@@ -243,10 +300,18 @@ bool XbdmServer::Dispatch(uintptr_t sock, const Command& c) {
     return SendLine(sock, fmt::format("200- hi=0x{:08x} lo=0x{:08x}",
                                       ft.dwHighDateTime, ft.dwLowDateTime));
   }
-  if (n == "getmem") return CmdGetMem(sock, c);
-  if (n == "setmem") return CmdSetMem(sock, c);
-  if (n == "modules") return CmdModules(sock);
-  if (n == "threads") return CmdThreads(sock);
+  if (n == "getmem") {
+    return CmdGetMem(sock, c);
+  }
+  if (n == "setmem") {
+    return CmdSetMem(sock, c);
+  }
+  if (n == "modules") {
+    return CmdModules(sock);
+  }
+  if (n == "threads") {
+    return CmdThreads(sock);
+  }
   if (n == "stop" || n == "go" || n == "break" || n == "halt" ||
       n == "continue") {
     // Needs Processor suspend/resume exposed; see notes.
@@ -267,7 +332,9 @@ bool XbdmServer::CmdGetMem(uintptr_t sock, const Command& c) {
   if (!c.GetU32("addr", &addr) || !c.GetU32("length", &len)) {
     return SendLine(sock, "400- missing addr/length");
   }
-  if (len > kMaxGetMem) return SendLine(sock, "400- length too large");
+  if (len > kMaxGetMem) {
+    return SendLine(sock, "400- length too large");
+  }
   Memory* mem = emulator_->memory();
   std::string out;
   out.reserve(len * 2 + len / 32 + 8);
@@ -298,9 +365,15 @@ bool XbdmServer::CmdSetMem(uintptr_t sock, const Command& c) {
     return SendLine(sock, "400- bad addr/data");
   }
   auto nib = [](char ch) -> int {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+      return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+      return ch - 'A' + 10;
+    }
     return -1;
   };
   const std::string& hex = it->second;
@@ -308,10 +381,12 @@ bool XbdmServer::CmdSetMem(uintptr_t sock, const Command& c) {
   size_t count = hex.size() / 2;
   // Validate everything first so a bad request writes nothing.
   for (size_t i = 0; i < count; ++i) {
-    if (nib(hex[2 * i]) < 0 || nib(hex[2 * i + 1]) < 0)
+    if (nib(hex[2 * i]) < 0 || nib(hex[2 * i + 1]) < 0) {
       return SendLine(sock, "400- bad hex");
-    if (!GuestPageReadable(mem, addr + static_cast<uint32_t>(i)))
+    }
+    if (!GuestPageReadable(mem, addr + static_cast<uint32_t>(i))) {
       return SendLine(sock, "404- unmapped");
+    }
   }
   for (size_t i = 0; i < count; ++i) {
     *mem->TranslateVirtual<uint8_t*>(addr + static_cast<uint32_t>(i)) =
@@ -325,7 +400,9 @@ bool XbdmServer::CmdModules(uintptr_t sock) {
   std::string out;
   for (auto* m : emulator_->processor()->GetModules()) {
     auto* xex = dynamic_cast<cpu::XexModule*>(m);
-    if (!xex || !xex->base_address()) continue;
+    if (!xex || !xex->base_address()) {
+      continue;
+    }
     out += fmt::format(
         "name=\"{}\" base=0x{:08x} size=0x{:08x} check=0x0 timestamp=0x0 "
         "pdata=0x0 psize=0x0 thread=0x0 osize=0x0\r\n",
@@ -338,8 +415,9 @@ bool XbdmServer::CmdThreads(uintptr_t sock) {
   std::string out;
   for (auto* t : emulator_->processor()->QueryThreadDebugInfos()) {
     if (t->state == cpu::ThreadDebugInfo::State::kExited ||
-        t->state == cpu::ThreadDebugInfo::State::kZombie)
+        t->state == cpu::ThreadDebugInfo::State::kZombie) {
       continue;
+    }
     out += fmt::format("{}\r\n", t->thread_id);
   }
   return SendMultiline(sock, out);
